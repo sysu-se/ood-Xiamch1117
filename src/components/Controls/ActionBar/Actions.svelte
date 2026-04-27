@@ -1,4 +1,6 @@
 <script>
+	import { undoMove, redoMove, startExplore, commitExplore, abandonExplore } from '@sudoku/game';
+	import { canUndo, canRedo, currentHint, exploreStatus } from '@sudoku/stores/domainGame';
 	import { candidates } from '@sudoku/stores/candidates';
 	import { userGrid } from '@sudoku/stores/grid';
 	import { cursor } from '@sudoku/stores/cursor';
@@ -9,33 +11,58 @@
 	import { gamePaused } from '@sudoku/stores/game';
 
 	$: hintsAvailable = $hints > 0;
+	$: cursorSelected = $cursor.x !== null && $cursor.y !== null;
+	$: selectedCellValue = cursorSelected ? $userGrid[$cursor.y][$cursor.x] : 0;
+	$: hintText = $currentHint
+		? `Hint: (${($currentHint.row ?? 0) + 1}, ${($currentHint.col ?? 0) + 1}) ${$currentHint.value ? '= ' + $currentHint.value : 'candidates: ' + $currentHint.candidates.join(', ')}`
+		: '';
+
+	function handleUndo() {
+		undoMove();
+	}
+
+	function handleRedo() {
+		redoMove();
+	}
 
 	function handleHint() {
 		if (hintsAvailable) {
-			if ($candidates.hasOwnProperty($cursor.x + ',' + $cursor.y)) {
+			if (cursorSelected && $candidates.hasOwnProperty($cursor.x + ',' + $cursor.y)) {
 				candidates.clear($cursor);
 			}
 
-			userGrid.applyHint($cursor);
+			userGrid.applyHint(cursorSelected ? $cursor : null);
 		}
+	}
+
+	function handleExplore() {
+		if ($exploreStatus.active) {
+			commitExplore();
+		} else {
+			startExplore();
+		}
+	}
+
+	function handleAbandonExplore() {
+		abandonExplore();
 	}
 </script>
 
 <div class="action-buttons space-x-3">
 
-	<button class="btn btn-round" disabled={$gamePaused} title="Undo">
+	<button class="btn btn-round" disabled={$gamePaused || !$canUndo} title="Undo" on:click={handleUndo}>
 		<svg class="icon-outline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
 		</svg>
 	</button>
 
-	<button class="btn btn-round" disabled={$gamePaused} title="Redo">
+	<button class="btn btn-round" disabled={$gamePaused || !$canRedo} title="Redo" on:click={handleRedo}>
 		<svg class="icon-outline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 90 00-8 8v2M21 10l-6 6m6-6l-6-6" />
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
 		</svg>
 	</button>
 
-	<button class="btn btn-round btn-badge" disabled={$keyboardDisabled || !hintsAvailable || $userGrid[$cursor.y][$cursor.x] !== 0} on:click={handleHint} title="Hints ({$hints})">
+	<button class="btn btn-round btn-badge" disabled={$keyboardDisabled || !hintsAvailable || selectedCellValue !== 0} on:click={handleHint} title="Hints ({$hints})">
 		<svg class="icon-outline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
 		</svg>
@@ -55,6 +82,31 @@
 
 </div>
 
+<div class="explore-panel mt-3">
+	<button class="btn btn-small" disabled={$gamePaused} on:click={handleExplore}>
+		{$exploreStatus.active ? 'Commit Explore' : 'Start Explore'}
+	</button>
+
+	<button class="btn btn-small" disabled={$gamePaused || !$exploreStatus.active} on:click={handleAbandonExplore}>
+		Abandon Explore
+	</button>
+
+	{#if $exploreStatus.active}
+		<span class="explore-badge">Exploring</span>
+	{/if}
+
+	{#if $exploreStatus.conflict}
+		<span class="explore-warning">Conflict</span>
+	{/if}
+
+	{#if $exploreStatus.repeatedFailure}
+		<span class="explore-warning">Known failed path</span>
+	{/if}
+</div>
+
+{#if hintText}
+	<div class="hint-text">{hintText}</div>
+{/if}
 
 <style>
 	.action-buttons {
@@ -73,5 +125,21 @@
 
 	.badge-primary {
 		@apply bg-primary;
+	}
+
+	.explore-panel {
+		@apply flex flex-wrap justify-center items-center gap-2 text-xs;
+	}
+
+	.explore-badge {
+		@apply px-2 py-1 rounded bg-primary text-white;
+	}
+
+	.explore-warning {
+		@apply px-2 py-1 rounded bg-red-600 text-white;
+	}
+
+	.hint-text {
+		@apply mt-2 text-center text-xs text-gray-700;
 	}
 </style>
